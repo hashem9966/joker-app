@@ -4,6 +4,6 @@
 //   SUPABASE_KEY : المفتاح العام (anon public أو publishable) — هذا مفتاح عام مسموح يكون في الموقع.
 //   لا تحط هنا أبداً مفتاح service_role أو secret.
 window.APP_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_KEY: ""
+  SUPABASE_URL: "https://plrnuqjvtpsdrbveapgt.supabase.co",
+  SUPABASE_KEY: "sb_publishable_idpsu8KJlYcULFKXn15PTw_URPMyiUi"
 };
