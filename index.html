@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>دفتر المقاصف</title>
-<meta name="theme-color" content="#1E6A50">
+<meta name="theme-color" content="#FFFFFF">
 <meta name="robots" content="noindex">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -16,14 +16,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 
 <!-- ============ LOGIN ============ -->
 <section id="login" class="login" hidden>
   <form class="login-card" id="loginForm" novalidate>
-    <img src="icons/icon.svg" alt="" width="56" height="56">
+    <span class="logo-tile big"><img src="icons/logo.png" alt="الشعار"></span>
     <h1>دفتر المقاصف</h1>
     <p class="muted small">دخول الموظفات والإدارة</p>
     <label class="field" for="l-branch"><span>الفرع</span><select id="l-branch"></select></label>
@@ -37,7 +37,7 @@
 <section id="setup" class="login" hidden>
   <div class="login-card">
     <h1>التطبيق جاهز للربط</h1>
-    <p class="muted" id="setupMsg">ما تم ربط الموقع بقاعدة البيانات بعد. عبّئ ملف <code>config.js</code> برابط Supabase والمفتاح العام.</p>
+    <p class="muted">ما تم ربط الموقع بقاعدة البيانات بعد. عبّئ ملف <code>config.js</code> برابط Supabase والمفتاح العام.</p>
   </div>
 </section>
 
@@ -46,13 +46,14 @@
 <header class="top">
   <div class="wrap">
     <div class="brand">
+      <span class="logo-tile"><img src="icons/logo.png" alt=""></span>
       <div class="brand-name">
         <h1 id="whoName">دفتر المقاصف</h1>
         <span class="small muted" id="whoSub"></span>
       </div>
       <button class="btn ghost small-btn" id="logoutBtn" type="button">خروج</button>
     </div>
-    <div class="pickers">
+    <div class="pickers" id="pickers">
       <label for="date">اليوم <input type="date" id="date"></label>
       <span class="date-label" id="dateLabel"></span>
     </div>
@@ -71,7 +72,8 @@
       <ul class="status-list">
         <li><button type="button" data-go="checklist">مهام الفتح والفسحة والإغلاق</button><span id="stCheck" class="pill idle">—</span></li>
         <li><button type="button" data-go="report">تقرير الإغلاق والصندوق</button><span id="stReport" class="pill idle">—</span></li>
-        <li><button type="button" data-go="requests">طلبات النواقص المفتوحة</button><span id="stReq" class="pill idle">—</span></li>
+        <li><button type="button" data-go="order">طلبية الفرع</button><span id="stOrder" class="pill idle">—</span></li>
+        <li><button type="button" data-go="stock">جرد المتبقي</button><span id="stStock" class="pill idle">—</span></li>
       </ul>
     </div>
     <form class="panel" id="staffForm" novalidate>
@@ -112,30 +114,48 @@
     </form>
   </section>
 
-  <!-- STAFF: REQUESTS -->
-  <section class="view" id="v-requests" hidden>
-    <form class="panel" id="reqForm" novalidate>
-      <h2>طلب نواقص</h2>
-      <div class="grid2">
-        <label class="field" for="q-item"><span>الصنف</span><input id="q-item" placeholder="مثال: أكواب قهوة 8 أونص"></label>
-        <label class="field" for="q-qty"><span>الكمية</span><input id="q-qty" placeholder="مثال: 2 كرتون"></label>
-      </div>
-      <div class="filter" aria-label="الأولوية">
-        <button type="button" class="chip" data-urg="normal" aria-pressed="true">عادي</button>
-        <button type="button" class="chip" data-urg="urgent" aria-pressed="false">عاجل · قبل الفسحة</button>
-      </div>
-      <div><button class="btn" type="submit" id="reqBtn">إرسال الطلب</button></div>
-    </form>
+  <!-- STAFF: ORDER -->
+  <section class="view" id="v-order" hidden>
     <div class="panel">
-      <div class="panel-head">
-        <h2>طلبات الفرع</h2>
+      <div class="panel-head"><h2>طلبية الفرع</h2><span id="order-state" class="pill idle">لم تُرسل</span></div>
+      <p class="small muted m0">اكتبي الكمية المطلوبة جنب كل صنف تحتاجونه. اللي تتركينه فاضي ما ينطلب.</p>
+      <button class="btn ghost" type="button" id="order-copy" hidden></button>
+      <div class="sheet-tools">
+        <input type="search" id="order-q" placeholder="ابحثي عن صنف…" aria-label="بحث في الأصناف">
         <div class="filter">
-          <button type="button" class="chip" data-f="open" aria-pressed="true">المفتوحة</button>
-          <button type="button" class="chip" data-f="all" aria-pressed="false">آخر أسبوعين</button>
+          <button type="button" class="chip" data-sf="order:all" aria-pressed="true">كل الأصناف</button>
+          <button type="button" class="chip" data-sf="order:mine" aria-pressed="false">المكتوب فقط</button>
         </div>
       </div>
-      <ul class="req-list" id="reqList"></ul>
+      <div class="sheet" id="order-list"></div>
+      <div class="extras">
+        <h3>أصناف مو موجودة في القائمة</h3>
+        <div id="order-extras" class="stack-sm"></div>
+        <div><button class="btn ghost small-btn" type="button" id="order-addx">+ إضافة سطر</button></div>
+      </div>
+      <label class="field" for="order-notes"><span>ملاحظات على الطلبية</span><textarea id="order-notes" placeholder="مثال: الخبز وصل أمس ناقص"></textarea></label>
+      <p class="small muted m0" id="order-meta"></p>
     </div>
+    <div class="savebar"><span id="order-count" class="num">0 صنف</span><button class="btn" type="button" id="order-save">إرسال الطلبية</button></div>
+  </section>
+
+  <!-- STAFF: STOCK -->
+  <section class="view" id="v-stock" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>جرد المتبقي</h2><span id="stock-state" class="pill idle">لم يُسجل</span></div>
+      <p class="small muted m0">آخر الدوام، اكتبي كم باقي من كل صنف. إذا خلص الصنف اكتبي 0.</p>
+      <div class="sheet-tools">
+        <input type="search" id="stock-q" placeholder="ابحثي عن صنف…" aria-label="بحث في الأصناف">
+        <div class="filter">
+          <button type="button" class="chip" data-sf="stock:all" aria-pressed="true">كل الأصناف</button>
+          <button type="button" class="chip" data-sf="stock:mine" aria-pressed="false">المكتوب فقط</button>
+          <button type="button" class="chip" data-sf="stock:left" aria-pressed="false">الباقي بدون جرد</button>
+        </div>
+      </div>
+      <div class="sheet" id="stock-list"></div>
+      <p class="small muted m0" id="stock-meta"></p>
+    </div>
+    <div class="savebar"><span id="stock-count" class="num">0 صنف</span><button class="btn" type="button" id="stock-save">حفظ الجرد</button></div>
   </section>
 
   <!-- ADMIN: TODAY -->
@@ -144,14 +164,14 @@
       <div class="panel-head"><h2>ملخص كل الفروع</h2><span class="small muted" id="adminDate"></span></div>
       <div class="totals">
         <div><span>إجمالي المبيعات</span><b id="a-total">0</b></div>
-        <div><span>التقارير المرسلة</span><b id="a-reports">0 / 8</b></div>
-        <div><span>نواقص مفتوحة</span><b id="a-req">0</b></div>
+        <div><span>التقارير المرسلة</span><b id="a-reports" class="num">0 / 8</b></div>
+        <div><span>الطلبيات المرسلة</span><b id="a-orders" class="num">0 / 8</b></div>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>الفرع</th><th class="num">كاش</th><th class="num">شبكة</th><th class="num">الإجمالي</th><th class="num">مصروفات</th><th class="num">تالف</th><th>المهام</th><th>المناوِبة</th></tr></thead>
+          <thead><tr><th>الفرع</th><th class="num">كاش</th><th class="num">شبكة</th><th class="num">الإجمالي</th><th class="num">مصروفات</th><th class="num">تالف</th><th>المهام</th><th>الطلبية</th><th>الجرد</th><th>المناوِبة</th></tr></thead>
           <tbody id="adminRows"></tbody>
-          <tfoot><tr><td>المجموع</td><td class="num" id="f-cash"></td><td class="num" id="f-card"></td><td class="num" id="f-total"></td><td class="num" id="f-exp"></td><td class="num" id="f-waste"></td><td></td><td></td></tr></tfoot>
+          <tfoot><tr><td>المجموع</td><td class="num" id="f-cash"></td><td class="num" id="f-card"></td><td class="num" id="f-total"></td><td class="num" id="f-exp"></td><td class="num" id="f-waste"></td><td></td><td></td><td></td><td></td></tr></tfoot>
         </table>
       </div>
     </div>
@@ -161,17 +181,37 @@
     </div>
   </section>
 
-  <!-- ADMIN: ALL REQUESTS -->
-  <section class="view" id="v-allreq" hidden>
+  <!-- ADMIN: ORDERS -->
+  <section class="view" id="v-aorders" hidden>
     <div class="panel">
-      <div class="panel-head">
-        <h2>نواقص كل الفروع</h2>
-        <div class="filter">
-          <button type="button" class="chip" data-af="open" aria-pressed="true">المفتوحة</button>
-          <button type="button" class="chip" data-af="all" aria-pressed="false">آخر أسبوعين</button>
-        </div>
+      <div class="panel-head"><h2>مجموع طلبيات الفروع</h2><span class="small muted" id="ao-date"></span></div>
+      <div class="branch-chips" id="ao-status"></div>
+      <div class="filter no-print">
+        <button type="button" class="chip" data-aov="total" aria-pressed="true">المجموع فقط</button>
+        <button type="button" class="chip" data-aov="split" aria-pressed="false">مع تفصيل الفروع</button>
       </div>
-      <ul class="req-list" id="allReqList"></ul>
+      <div class="table-wrap"><table class="sheet-table" id="ao-table"></table></div>
+      <div class="actions no-print">
+        <button class="btn ghost" type="button" id="ao-csv">تنزيل Excel</button>
+        <button class="btn ghost" type="button" data-print>طباعة</button>
+      </div>
+    </div>
+    <div class="panel" id="ao-extra-panel" hidden>
+      <h2>إضافات وملاحظات الفروع</h2>
+      <ul class="req-list" id="ao-extras"></ul>
+    </div>
+  </section>
+
+  <!-- ADMIN: STOCK -->
+  <section class="view" id="v-astock" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>جرد الفروع</h2><span class="small muted" id="as-date"></span></div>
+      <div class="branch-chips" id="as-status"></div>
+      <div class="table-wrap"><table class="sheet-table" id="as-table"></table></div>
+      <div class="actions no-print">
+        <button class="btn ghost" type="button" id="as-csv">تنزيل Excel</button>
+        <button class="btn ghost" type="button" data-print>طباعة</button>
+      </div>
     </div>
   </section>
 
@@ -179,7 +219,7 @@
   <section class="view" id="v-period" hidden>
     <div class="panel">
       <h2>تقرير فترة</h2>
-      <div class="filter" id="presets">
+      <div class="filter no-print" id="presets">
         <button type="button" class="chip" data-p="week" aria-pressed="true">هذا الأسبوع</button>
         <button type="button" class="chip" data-p="lastweek" aria-pressed="false">الأسبوع الماضي</button>
         <button type="button" class="chip" data-p="month" aria-pressed="false">هذا الشهر</button>
@@ -200,7 +240,7 @@
           <tbody id="periodRows"></tbody>
         </table>
       </div>
-      <div><button class="btn ghost" type="button" id="exportBtn">تنزيل كملف Excel (CSV)</button></div>
+      <div class="actions no-print"><button class="btn ghost" type="button" id="exportBtn">تنزيل Excel</button></div>
     </div>
     <div class="panel">
       <h2>المبيعات يوم بيوم</h2>
@@ -210,6 +250,22 @@
 
   <!-- ADMIN: SETTINGS -->
   <section class="view" id="v-settings" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>الأصناف</h2><span class="small muted num" id="prod-count"></span></div>
+      <p class="small muted m0">هذي الأصناف تظهر للموظفات في الطلبية والجرد.</p>
+      <form class="stack-sm" id="bulkForm" novalidate>
+        <label class="field" for="bulk"><span>أضف أصناف: كل صنف في سطر</span>
+          <textarea id="bulk" rows="6" placeholder="عصير برتقال، علبة، مشروبات&#10;ساندويتش جبن، حبة، ساندويتشات&#10;أكواب ورق 8 أونص، كرتون"></textarea></label>
+        <p class="small muted m0">الترتيب: <b>اسم الصنف، الوحدة، القسم</b>. الوحدة والقسم اختياريين. تقدر تنسخ الأعمدة من Excel وتلصقها مباشرة.</p>
+        <div class="row-inline">
+          <label class="field" for="bulk-kind"><span>يظهر في</span>
+            <select id="bulk-kind"><option value="all">المقاصف والكوفيهات</option><option value="canteen">المقاصف فقط</option><option value="cafe">الكوفيهات فقط</option></select></label>
+          <button class="btn" type="submit" id="bulk-btn">إضافة الأصناف</button>
+        </div>
+      </form>
+      <input type="search" id="prod-q" placeholder="ابحث في الأصناف…" aria-label="بحث في الأصناف">
+      <ul class="prod-list" id="prodList"></ul>
+    </div>
     <form class="panel" id="boardForm" novalidate>
       <h2>تعميم لكل الموظفات</h2>
       <label class="field" for="b-text"><span>يظهر في أعلى الصفحة الرئيسية لكل الفروع. اتركه فاضي عشان تشيله.</span><textarea id="b-text" placeholder="مثال: بكرة اختبارات، الفسحة الساعة 10:30 بدل 9:45"></textarea></label>
@@ -225,7 +281,7 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
 
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

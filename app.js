@@ -18,29 +18,32 @@ const TASKS = [
     ['r2', 'ترتيب العرض ووضع الأسعار بشكل واضح'],
     ['r3', 'تجهيز المشروبات وآلة القهوة (للكوفي)']] },
   { group: 'الإغلاق', items: [
-    ['c1', 'جرد المتبقي وتسجيل التالف'],
+    ['c1', 'جرد المتبقي وتسجيله في قسم الجرد'],
     ['c2', 'عدّ الصندوق وتسليم الكاش'],
     ['c3', 'تنظيف الأجهزة والأرضية'],
     ['c4', 'إحكام إغلاق الثلاجات وإطفاء باقي الأجهزة'],
-    ['c5', 'إخراج النفايات']] }
+    ['c5', 'إرسال طلبية الفرع'],
+    ['c6', 'إخراج النفايات']] }
 ];
 const TASK_COUNT = TASKS.reduce((n, g) => n + g.items.length, 0);
-const STATUS = { new: 'جديد', ordered: 'تم الطلب', delivered: 'وصل' };
-const STAFF_TABS = [['home', 'الرئيسية'], ['checklist', 'مهام اليوم'], ['report', 'تقرير الإغلاق'], ['requests', 'النواقص']];
-const ADMIN_TABS = [['overview', 'اليوم'], ['allreq', 'النواقص'], ['period', 'تقرير فترة'], ['settings', 'الإعدادات']];
+const STAFF_TABS = [['home', 'الرئيسية'], ['checklist', 'مهام اليوم'], ['report', 'تقرير الإغلاق'], ['order', 'الطلبية'], ['stock', 'الجرد']];
+const ADMIN_TABS = [['overview', 'اليوم'], ['aorders', 'الطلبيات'], ['astock', 'الجرد'], ['period', 'تقرير فترة'], ['settings', 'الإعدادات']];
+const KIND_LABEL = { all: 'المقاصف والكوفيهات', canteen: 'المقاصف فقط', cafe: 'الكوفيهات فقط' };
+const NO_CAT = 'أصناف أخرى';
 const MSG = {
   NETWORK: 'ما فيه اتصال بالإنترنت، حاول مرة ثانية',
   SESSION_EXPIRED: 'انتهت الجلسة، سجّل دخول من جديد',
   DAY_LOCKED: 'ما يمكن تعديل يوم أقدم من 3 أيام، كلّمي الإدارة',
   BAD_DAY: 'التاريخ غير صحيح',
   NOT_ADMIN: 'هذا للإدارة فقط',
-  BRANCH_ONLY: 'هذا للفروع فقط',
   BAD_PIN_FORMAT: 'الرقم السري لازم يكون من 4 إلى 8 أرقام',
   BAD_INPUT: 'تأكد من البيانات المكتوبة',
   BAD_RANGE: 'الفترة لازم تكون أقل من 3 شهور',
   BAD_PIN: 'الرقم السري غلط',
   LOCKED: 'محاولات غلط كثيرة. انتظر 15 دقيقة وحاول مرة ثانية',
-  NO_PIN: 'هذا الفرع ما له رقم سري بعد، اطلبيه من الإدارة'
+  NO_PIN: 'هذا الفرع ما له رقم سري بعد، اطلبيه من الإدارة',
+  DUPLICATE: 'فيه صنف ثاني بنفس الاسم',
+  NOT_FOUND: 'الصنف غير موجود، حدّث الصفحة'
 };
 
 // ---------------------------------------------------------------- helpers
@@ -48,24 +51,35 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = new Intl.NumberFormat('ar-SA-u-nu-latn', { maximumFractionDigits: 2 });
 const money = v => nf.format(Number(v) || 0);
-const num = v => {
-  const s = String(v == null ? '' : v).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫,]/g, '.');
-  const n = parseFloat(s); return isFinite(n) && n >= 0 ? n : 0;
-};
-const digits = v => String(v || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g, '');
+const westDigits = s => String(s == null ? '' : s).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+const num = v => { const n = parseFloat(westDigits(v).replace(/[٫,]/g, '.')); return isFinite(n) && n >= 0 ? n : 0; };
+const qtyOrNull = v => { const s = westDigits(v).replace(/[٫,]/g, '.').trim(); if (s === '') return null; const n = parseFloat(s); return isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null; };
+const digits = v => westDigits(v).replace(/\D/g, '');
+const norm = s => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[ً-ْـ]/g, '').trim();
 const riyadhDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const toDate = iso => new Date(iso + 'T12:00:00Z');
 const addDays = (iso, n) => { const d = toDate(iso); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const dateLabel = (iso, opts) => new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', opts || { weekday: 'long', day: 'numeric', month: 'long' }).format(toDate(iso));
+const shortDate = iso => dateLabel(iso, { weekday: 'short', day: 'numeric', month: 'short' });
 const timeLabel = iso => { try { return new Intl.DateTimeFormat('ar-SA-u-nu-latn', { timeZone: 'Asia/Riyadh', hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); } catch (e) { return ''; } };
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
 };
 let toastT;
-function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2800); }
 function notice(t) { $('notice').textContent = t || ''; $('notice').hidden = !t; }
 const errMsg = e => MSG[e && e.code] || 'صار خطأ، حاول مرة ثانية';
+const pill = (cls, text) => `<span class="pill ${cls}">${esc(text)}</span>`;
+function downloadCSV(name, rows) {
+  const csv = '﻿' + rows.map(r => r.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = name + '.csv';
+  a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
 
 // ---------------------------------------------------------------- api
 async function api(fn, args) {
@@ -87,14 +101,19 @@ async function api(fn, args) {
 }
 
 // ---------------------------------------------------------------- state
-const S = {
-  sess: null, branches: [], today: riyadhDate(), date: riyadhDate(), view: null,
-  data: null, urg: 'normal', reqFilter: 'open', adminReqFilter: 'open', period: null
-};
+const S = { sess: null, branches: [], today: riyadhDate(), date: riyadhDate(), view: null, data: null, period: null, aoView: 'total' };
 try { S.sess = JSON.parse(store.get('sess') || 'null'); } catch (e) { S.sess = null; }
 const tok = () => S.sess && S.sess.token;
 const isAdmin = () => !!(S.sess && S.sess.is_admin);
 const branchName = id => (S.branches.find(b => b.id === id) || {}).name || id;
+const shortBranch = b => b.name.replace(/^(مقصف|كوفي)\s+/, '');
+const products = () => (S.data && S.data.products) || [];
+function prodMap() { const m = {}; products().forEach(p => { m[p.id] = p; }); return m; }
+function groupByCat(list) {
+  const groups = [], idx = {};
+  list.forEach(p => { const c = p.category || NO_CAT; if (!(c in idx)) { idx[c] = groups.length; groups.push({ cat: c, items: [] }); } groups[idx[c]].items.push(p); });
+  return groups;
+}
 
 function show(screen) { ['login', 'setup', 'app'].forEach(id => { $(id).hidden = id !== screen; }); }
 
@@ -145,6 +164,11 @@ $('loginForm').addEventListener('submit', async e => {
 
 function endSession() { S.sess = null; S.data = null; store.set('sess', null); showLogin(); }
 $('logoutBtn').addEventListener('click', async () => {
+  if (anyDirty() && !$('logoutBtn').dataset.sure) {
+    $('logoutBtn').dataset.sure = '1'; $('logoutBtn').textContent = 'فيه شي ما انرسل، خروج؟';
+    setTimeout(() => { delete $('logoutBtn').dataset.sure; $('logoutBtn').textContent = 'خروج'; }, 4000);
+    return;
+  }
   const t = tok(); endSession();
   if (t) { try { await api('app_logout', { p_token: t }); } catch (e) {} }
 });
@@ -154,7 +178,7 @@ async function startApp() {
   show('app');
   notice('');
   const tabs = isAdmin() ? ADMIN_TABS : STAFF_TABS;
-  $('tabs').innerHTML = tabs.map(([v, l]) => `<button class="tab" role="tab" type="button" data-view="${v}">${l}${v === 'requests' || v === 'allreq' ? ' <span class="count num" data-count hidden></span>' : ''}</button>`).join('');
+  $('tabs').innerHTML = tabs.map(([v, l]) => `<button class="tab" role="tab" type="button" data-view="${v}">${l}</button>`).join('');
   $('whoName').textContent = S.sess.name || 'دفتر المقاصف';
   $('whoSub').textContent = isAdmin() ? 'متابعة كل الفروع' : (store.get('staff') || '');
   S.date = S.today = riyadhDate();
@@ -165,13 +189,14 @@ async function startApp() {
 }
 $('tabs').addEventListener('click', e => { const t = e.target.closest('.tab'); if (t) go(t.dataset.view); });
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+document.querySelectorAll('[data-print]').forEach(b => b.addEventListener('click', () => window.print()));
 function go(v) {
   S.view = v;
   document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.view === v)));
   document.querySelectorAll('main > .view').forEach(s => { s.hidden = s.id !== 'v-' + v; });
-  $('date').parentElement.parentElement.hidden = v === 'period' || v === 'settings' || v === 'allreq';
+  $('pickers').hidden = v === 'period' || v === 'settings';
   if (v === 'period' && !S.period) setPreset('week');
-  if (v === 'settings') renderSettings();
+  if (v === 'settings') { renderPins(); renderProducts(); }
   window.scrollTo({ top: 0 });
 }
 $('date').addEventListener('change', () => {
@@ -191,41 +216,27 @@ async function load(silent) {
   try {
     const d = await api('app_day', { p_token: tok(), p_day: S.date });
     S.data = d; if (d.today) S.today = d.today;
-    if (!isAdmin() && d.staff) { store.set('staff', d.staff); }
+    if (!isAdmin() && d.staff) store.set('staff', d.staff);
     notice('');
     renderAll();
   } catch (e) {
     if (e.code !== 'SESSION_EXPIRED' && !silent) notice(errMsg(e));
   } finally { loading = false; }
 }
+function anyDirty() { return formDirty || boardDirty || !!pending || SH.order.dirty || SH.stock.dirty; }
 function busyEditing() {
   const a = document.activeElement;
-  return formDirty || boardDirty || pending || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && $('app').contains(a));
+  return anyDirty() || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && $('app').contains(a));
 }
 setInterval(() => { if (document.visibilityState === 'visible' && tok() && !busyEditing()) load(true); }, 60000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && tok() && !busyEditing()) load(true); });
+window.addEventListener('beforeunload', e => { if (tok() && (SH.order.dirty || SH.stock.dirty || formDirty)) { e.preventDefault(); e.returnValue = ''; } });
 
 function renderAll() {
   updateDateBounds();
-  if (isAdmin()) { renderOverview(); renderAllRequests(); }
-  else { renderHome(); renderChecklist(); renderReport(); renderRequests(); }
+  if (isAdmin()) { renderOverview(); renderAOrders(); renderAStock(); if (S.view === 'settings') renderProducts(); }
+  else { renderHome(); renderChecklist(); renderReport(); syncSheet('order'); syncSheet('stock'); }
 }
-function setCount(n) { document.querySelectorAll('[data-count]').forEach(c => { c.hidden = !n; c.textContent = n; }); }
-
-// ---------------------------------------------------------------- requests (shared)
-function reqRow(r, showBranch) {
-  const opts = Object.keys(STATUS).map(s => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${STATUS[s]}</option>`).join('');
-  return `<li class="req"><span class="item">${r.urgent ? '<span class="urgent">عاجل · </span>' : ''}${esc(r.item)}${r.qty ? ` <span class="muted">— ${esc(r.qty)}</span>` : ''}</span>
-    <select aria-label="حالة الطلب" data-req="${esc(r.id)}">${opts}</select>
-    <span class="meta">${showBranch ? esc(branchName(r.branch_id)) + ' · ' : ''}${esc(dateLabel(new Date(r.created_at).toISOString().slice(0, 10), { weekday: 'short', day: 'numeric', month: 'short' }))} ${esc(timeLabel(r.created_at))}${r.staff ? ' · ' + esc(r.staff) : ''}</span></li>`;
-}
-document.addEventListener('change', async e => {
-  const id = e.target.dataset && e.target.dataset.req; if (!id) return;
-  const st = e.target.value; e.target.disabled = true;
-  try { await api('app_set_request_status', { p_token: tok(), p_id: id, p_status: st }); toast('تحدّثت الحالة: ' + STATUS[st]); await load(true); }
-  catch (err) { toast(errMsg(err)); }
-  finally { e.target.disabled = false; }
-});
 
 // ---------------------------------------------------------------- staff: home
 function renderHome() {
@@ -235,9 +246,12 @@ function renderHome() {
   const n = d.checklist ? d.checklist.done_count : 0;
   const sc = $('stCheck'); sc.className = 'pill num ' + (n >= TASK_COUNT ? 'ok' : n ? 'warn' : 'idle'); sc.textContent = `${n}/${TASK_COUNT}`;
   const r = d.report; const sr = $('stReport'); sr.className = 'pill ' + (r ? 'ok' : 'idle'); sr.textContent = r ? money(num(r.cash) + num(r.card)) + ' ر.س' : 'لم يُرسل';
-  const open = (d.requests || []).filter(x => x.status !== 'delivered');
-  const urgent = open.some(x => x.urgent && x.status === 'new');
-  const sq = $('stReq'); sq.className = 'pill ' + (urgent ? 'bad' : open.length ? 'warn' : 'ok'); sq.textContent = open.length ? open.length + ' مفتوح' : 'لا يوجد';
+  const o = d.order, so = $('stOrder');
+  so.className = 'pill ' + (SH.order.dirty ? 'warn' : o ? 'ok' : 'idle');
+  so.textContent = SH.order.dirty ? 'ما انرسلت' : o ? `انرسلت · ${o.item_count} صنف` : 'لم تُرسل';
+  const k = d.stock, sk = $('stStock');
+  sk.className = 'pill ' + (SH.stock.dirty ? 'warn' : k ? 'ok' : 'idle');
+  sk.textContent = SH.stock.dirty ? 'ما انحفظ' : k ? `تم · ${k.item_count} صنف` : 'لم يُسجل';
   if (document.activeElement !== $('staff')) $('staff').value = d.staff || store.get('staff') || '';
   $('whoSub').textContent = d.staff || store.get('staff') || '';
 }
@@ -265,7 +279,6 @@ function renderChecklist() {
 function setCheckProgress(n) { $('checkPct').textContent = `${n} من ${TASK_COUNT}`; $('checkBar').style.width = (n / TASK_COUNT * 100) + '%'; }
 $('checkGroups').addEventListener('change', e => {
   const id = e.target.dataset && e.target.dataset.task; if (!id) return;
-  e.stopPropagation();
   pending = Object.assign({}, pending || ((S.data && S.data.checklist && S.data.checklist.done) || {}));
   pending[id] = e.target.checked;
   setCheckProgress(Object.values(pending).filter(Boolean).length);
@@ -314,69 +327,273 @@ $('reportForm').addEventListener('submit', async e => {
   finally { $('reportBtn').disabled = false; }
 });
 
-// ---------------------------------------------------------------- staff: requests
-document.querySelectorAll('[data-urg]').forEach(b => b.addEventListener('click', () => {
-  S.urg = b.dataset.urg; document.querySelectorAll('[data-urg]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-}));
-document.querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => {
-  S.reqFilter = b.dataset.f; document.querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderRequests();
-}));
-$('reqForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const item = $('q-item').value.trim(); if (!item) { toast('اكتبي اسم الصنف'); $('q-item').focus(); return; }
-  $('reqBtn').disabled = true;
-  try {
-    await api('app_add_request', { p_token: tok(), p_item: item, p_qty: $('q-qty').value.trim(), p_urgent: S.urg === 'urgent' });
-    $('q-item').value = ''; $('q-qty').value = ''; toast('انرسل الطلب للإدارة'); await load(true);
-  } catch (err) { toast(errMsg(err)); }
-  finally { $('reqBtn').disabled = false; }
+// ---------------------------------------------------------------- staff: order & stock sheets
+// order: blank = not needed, so 0 is removed. stock: blank = not counted yet, 0 = ran out.
+const SH = {
+  order: { vals: {}, extras: [], notes: '', dirty: false, view: 'all', key: null },
+  stock: { vals: {}, dirty: false, view: 'all', key: null }
+};
+const docOf = mode => S.data && S.data[mode];
+const hasVal = (mode, v) => mode === 'order' ? (v != null && v > 0) : v != null;
+const sheetKey = () => (S.sess && S.sess.branch) + '|' + S.date;
+const draftKey = (mode, key) => 'draft:' + mode + ':' + key;
+const draftTimers = {};
+function writeDraft(mode) {
+  clearTimeout(draftTimers[mode]); draftTimers[mode] = null;
+  const st = SH[mode];
+  if (st.dirty && st.key) store.set(draftKey(mode, st.key), JSON.stringify({ vals: st.vals, extras: st.extras, notes: st.notes, at: Date.now() }));
+}
+function saveDraft(mode) { clearTimeout(draftTimers[mode]); draftTimers[mode] = setTimeout(() => writeDraft(mode), 300); }
+// write pending drafts at once when the page is hidden or closed (phones kill background tabs)
+const flushDrafts = () => { ['order', 'stock'].forEach(m => { if (draftTimers[m]) writeDraft(m); }); };
+window.addEventListener('pagehide', flushDrafts);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDrafts(); });
+function syncSheet(mode) {
+  const st = SH[mode], key = sheetKey(), doc = docOf(mode);
+  if (st.key === key && st.dirty) { renderSheetMeta(mode); return; }
+  st.key = key; st.dirty = false;
+  st.vals = {}; Object.entries((doc && doc.items) || {}).forEach(([k, v]) => { st.vals[k] = Number(v); });
+  if (mode === 'order') { st.extras = ((doc && doc.extras) || []).map(x => ({ name: x.name || '', qty: x.qty || '' })); st.notes = (doc && doc.notes) || ''; }
+  let draft = null; try { draft = JSON.parse(store.get(draftKey(mode, key)) || 'null'); } catch (e) {}
+  if (draft && (!doc || draft.at > Date.parse(doc.updated_at))) {
+    st.vals = draft.vals || {}; if (mode === 'order') { st.extras = draft.extras || []; st.notes = draft.notes || ''; }
+    st.dirty = true;
+  } else if (draft) store.set(draftKey(mode, key), null);
+  renderSheet(mode);
+}
+function rowHTML(mode, p, v) {
+  return `<div class="prow${hasVal(mode, v) ? ' has' : ''}" data-pid="${esc(p.id)}" data-name="${esc(norm(p.name + ' ' + (p.category || '')))}">
+    <div class="pname"><span>${esc(p.name)}</span>${p.unit ? `<small>${esc(p.unit)}</small>` : ''}</div>
+    <div class="stepper"><button type="button" data-step="-1" aria-label="إنقاص ${esc(p.name)}">−</button><input inputmode="decimal" autocomplete="off" aria-label="كمية ${esc(p.name)}" value="${v == null ? '' : esc(v)}"><button type="button" data-step="1" aria-label="زيادة ${esc(p.name)}">+</button></div></div>`;
+}
+function renderSheet(mode) {
+  const st = SH[mode], list = $(mode + '-list'), prods = products();
+  list.innerHTML = prods.length
+    ? groupByCat(prods).map(g => `<div class="cat">${esc(g.cat)}</div>` + g.items.map(p => rowHTML(mode, p, st.vals[p.id])).join('')).join('')
+    : `<div class="empty">ما فيه أصناف بعد. الإدارة تضيف الأصناف من الإعدادات.${mode === 'order' ? ' تقدرين الحين تكتبين طلبيتك في «أصناف مو موجودة في القائمة» تحت.' : ''}</div>`;
+  if (mode === 'order') {
+    renderExtras();
+    if (document.activeElement !== $('order-notes')) $('order-notes').value = st.notes;
+  }
+  applyFilter(mode); renderSheetMeta(mode);
+}
+function applyFilter(mode) {
+  const st = SH[mode], q = norm($(mode + '-q').value);
+  const kids = [...$(mode + '-list').children];
+  let cat = null, catVisible = false;
+  const closeCat = () => { if (cat) cat.hidden = !catVisible; };
+  kids.forEach(el => {
+    if (el.classList.contains('cat')) { closeCat(); cat = el; catVisible = false; return; }
+    if (!el.classList.contains('prow')) return;
+    const has = hasVal(mode, st.vals[el.dataset.pid]);
+    const ok = (!q || el.dataset.name.includes(q)) && (st.view === 'all' || (st.view === 'mine' ? has : !has));
+    el.hidden = !ok; if (ok) catVisible = true;
+  });
+  closeCat();
+}
+function renderSheetMeta(mode) {
+  const st = SH[mode], doc = docOf(mode);
+  let n = Object.keys(st.vals).filter(k => hasVal(mode, st.vals[k])).length;
+  if (mode === 'order') n += st.extras.filter(x => x.name.trim()).length;
+  $(mode + '-count').textContent = n + ' صنف';
+  $(mode + '-count').parentElement.classList.toggle('dirty', st.dirty);
+  const state = $(mode + '-state');
+  const done = mode === 'order' ? 'انرسلت' : 'تم الجرد', none = mode === 'order' ? 'لم تُرسل' : 'لم يُسجل';
+  state.className = 'pill ' + (st.dirty ? 'warn' : doc ? 'ok' : 'idle');
+  state.textContent = st.dirty ? 'مسودة' : doc ? done : none;
+  $(mode + '-meta').textContent = doc ? `آخر حفظ ${timeLabel(doc.updated_at)}${doc.staff ? ' · ' + doc.staff : ''}. تقدرين تعدّلين وتحفظين مرة ثانية.` : '';
+  $(mode + '-save').textContent = mode === 'order' ? (doc ? 'تحديث الطلبية' : 'إرسال الطلبية') : (doc ? 'تحديث الجرد' : 'حفظ الجرد');
+  if (mode === 'order') {
+    const prev = S.data && S.data.prev_order, btn = $('order-copy');
+    const empty = n === 0;
+    btn.hidden = !(prev && prev.item_count > 0 && empty);
+    if (!btn.hidden) btn.textContent = `نسخ طلبية ${shortDate(prev.day)} (${prev.item_count} صنف) وتعديلها`;
+  }
+  if (!isAdmin()) renderHome();
+}
+function setVal(mode, pid, v) {
+  const st = SH[mode];
+  if (v == null || (mode === 'order' && v === 0)) delete st.vals[pid]; else st.vals[pid] = v;
+  st.dirty = true;
+  const row = $(mode + '-list').querySelector(`.prow[data-pid="${CSS.escape(pid)}"]`);
+  if (row) row.classList.toggle('has', hasVal(mode, st.vals[pid]));
+  renderSheetMeta(mode); saveDraft(mode);
+}
+['order', 'stock'].forEach(mode => {
+  const list = $(mode + '-list');
+  list.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]'); if (!b) return;
+    const row = b.closest('.prow'), input = row.querySelector('input'), pid = row.dataset.pid;
+    const cur = qtyOrNull(input.value), step = Number(b.dataset.step);
+    let next;
+    if (mode === 'stock' && cur == null) next = step > 0 ? 1 : 0;
+    else next = Math.max(0, (cur || 0) + step);
+    if (mode === 'order' && next === 0) next = null;
+    input.value = next == null ? '' : next;
+    setVal(mode, pid, next);
+  });
+  list.addEventListener('input', e => {
+    if (e.target.tagName !== 'INPUT') return;
+    setVal(mode, e.target.closest('.prow').dataset.pid, qtyOrNull(e.target.value));
+  });
+  list.addEventListener('focusin', e => { if (e.target.tagName === 'INPUT') e.target.select(); });
+  $(mode + '-q').addEventListener('input', () => applyFilter(mode));
+  $(mode + '-save').addEventListener('click', () => saveSheet(mode));
 });
-function renderRequests() {
-  const all = (S.data && S.data.requests) || [];
-  const list = S.reqFilter === 'open' ? all.filter(r => r.status !== 'delivered') : all;
-  $('reqList').innerHTML = list.length ? list.map(r => reqRow(r, false)).join('')
-    : `<li class="empty">${S.reqFilter === 'open' ? 'ما فيه نواقص مفتوحة لهذا الفرع' : 'ما فيه طلبات في آخر أسبوعين'}</li>`;
-  setCount(all.filter(r => r.status !== 'delivered').length);
+document.querySelectorAll('[data-sf]').forEach(b => b.addEventListener('click', () => {
+  const [mode, view] = b.dataset.sf.split(':');
+  SH[mode].view = view;
+  document.querySelectorAll(`[data-sf^="${mode}:"]`).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  applyFilter(mode);
+}));
+// order extras (free-text rows)
+function renderExtras() {
+  $('order-extras').innerHTML = SH.order.extras.map((x, i) => `<div class="xrow" data-x="${i}">
+      <input placeholder="اسم الصنف" aria-label="اسم الصنف" value="${esc(x.name)}" data-xf="name">
+      <input placeholder="الكمية" aria-label="الكمية" value="${esc(x.qty)}" data-xf="qty">
+      <button type="button" data-xdel aria-label="حذف السطر">×</button></div>`).join('');
+}
+$('order-addx').addEventListener('click', () => {
+  SH.order.extras.push({ name: '', qty: '' }); renderExtras();
+  const rows = $('order-extras').querySelectorAll('.xrow'); rows[rows.length - 1].querySelector('input').focus();
+});
+$('order-extras').addEventListener('input', e => {
+  const row = e.target.closest('.xrow'); if (!row) return;
+  SH.order.extras[Number(row.dataset.x)][e.target.dataset.xf] = e.target.value;
+  SH.order.dirty = true; renderSheetMeta('order'); saveDraft('order');
+});
+$('order-extras').addEventListener('click', e => {
+  if (!e.target.closest('[data-xdel]')) return;
+  SH.order.extras.splice(Number(e.target.closest('.xrow').dataset.x), 1);
+  SH.order.dirty = true; renderExtras(); renderSheetMeta('order'); saveDraft('order');
+});
+$('order-notes').addEventListener('input', () => { SH.order.notes = $('order-notes').value; SH.order.dirty = true; renderSheetMeta('order'); saveDraft('order'); });
+$('order-copy').addEventListener('click', () => {
+  const prev = S.data && S.data.prev_order; if (!prev) return;
+  const ids = prodMap();
+  SH.order.vals = {}; Object.entries(prev.items || {}).forEach(([k, v]) => { if (ids[k]) SH.order.vals[k] = Number(v); });
+  SH.order.extras = (prev.extras || []).map(x => ({ name: x.name || '', qty: x.qty || '' }));
+  SH.order.dirty = true; renderSheet('order'); saveDraft('order');
+  toast('انسخت الطلبية، عدّلي اللي تبين وأرسليها');
+});
+async function saveSheet(mode) {
+  const st = SH[mode], btn = $(mode + '-save');
+  const items = {}; Object.entries(st.vals).forEach(([k, v]) => { if (hasVal(mode, v)) items[k] = v; });
+  const extras = mode === 'order' ? st.extras.filter(x => x.name.trim()).map(x => ({ name: x.name.trim(), qty: String(x.qty || '').trim() })) : [];
+  if (!Object.keys(items).length && !extras.length) { toast(mode === 'order' ? 'اكتبي كمية لصنف واحد على الأقل' : 'اكتبي المتبقي لصنف واحد على الأقل'); return; }
+  btn.disabled = true;
+  try {
+    const doc = mode === 'order'
+      ? await api('app_save_order', { p_token: tok(), p_day: S.date, p_items: items, p_extras: extras, p_notes: st.notes })
+      : await api('app_save_stock', { p_token: tok(), p_day: S.date, p_items: items });
+    if (S.data) S.data[mode] = doc;
+    store.set(draftKey(mode, st.key), null);
+    st.dirty = false; syncSheet(mode);
+    toast(mode === 'order' ? 'انرسلت الطلبية للإدارة ✓' : 'انحفظ الجرد ✓');
+  } catch (err) { toast(errMsg(err)); }
+  finally { btn.disabled = false; }
 }
 
 // ---------------------------------------------------------------- admin: overview
 function renderOverview() {
   const d = S.data || {};
   $('adminDate').textContent = dateLabel(S.date);
-  const reps = {}; (d.reports || []).forEach(r => { reps[r.branch_id] = r; });
-  const chk = {}; (d.checklists || []).forEach(c => { chk[c.branch_id] = c; });
+  const by = (arr) => { const m = {}; (arr || []).forEach(x => { m[x.branch_id] = x; }); return m; };
+  const reps = by(d.reports), chk = by(d.checklists), ords = by(d.orders), stk = by(d.stocks);
   const f = { cash: 0, card: 0, exp: 0, waste: 0 }; let sent = 0;
   $('adminRows').innerHTML = S.branches.map(b => {
-    const r = reps[b.id], c = chk[b.id], cnt = c ? c.done_count : 0;
+    const r = reps[b.id], c = chk[b.id], o = ords[b.id], k = stk[b.id], cnt = c ? c.done_count : 0;
     if (r) { sent++; f.cash += num(r.cash); f.card += num(r.card); f.exp += num(r.expenses); f.waste += num(r.waste); }
-    const pill = `<span class="pill num ${cnt >= TASK_COUNT ? 'ok' : cnt ? 'warn' : 'idle'}">${cnt}/${TASK_COUNT}</span>`;
     return `<tr><td>${esc(b.name)}</td>` + (r
       ? `<td class="num">${money(r.cash)}</td><td class="num">${money(r.card)}</td><td class="num"><b>${money(num(r.cash) + num(r.card))}</b></td><td class="num">${money(r.expenses)}</td><td class="num">${money(r.waste)}</td>`
-      : `<td colspan="5"><span class="pill idle">لم يُرسل التقرير</span></td>`) +
-      `<td>${pill}</td><td>${esc((r && r.staff) || (c && c.staff) || '—')}</td></tr>`;
+      : `<td colspan="5">${pill('idle', 'لم يُرسل التقرير')}</td>`) +
+      `<td>${pill('num ' + (cnt >= TASK_COUNT ? 'ok' : cnt ? 'warn' : 'idle'), cnt + '/' + TASK_COUNT)}</td>` +
+      `<td>${o ? pill('ok', o.item_count + ' صنف') : pill('idle', '—')}</td>` +
+      `<td>${k ? pill('ok', 'تم') : pill('idle', '—')}</td>` +
+      `<td>${esc((r && r.staff) || (o && o.staff) || (c && c.staff) || '—')}</td></tr>`;
   }).join('');
   $('f-cash').textContent = money(f.cash); $('f-card').textContent = money(f.card); $('f-total').textContent = money(f.cash + f.card);
   $('f-exp').textContent = money(f.exp); $('f-waste').textContent = money(f.waste);
   $('a-total').textContent = money(f.cash + f.card) + ' ر.س';
   $('a-reports').textContent = `${sent} / ${S.branches.length}`;
-  const open = (d.requests || []).filter(r => r.status !== 'delivered');
-  $('a-req').textContent = open.length; setCount(open.length);
+  $('a-orders').textContent = `${(d.orders || []).length} / ${S.branches.length}`;
   const notes = S.branches.map(b => reps[b.id]).filter(r => r && (r.notes || r.best));
   $('notesPanel').hidden = !notes.length;
   $('adminNotes').innerHTML = notes.map(r => `<li class="req"><span class="item">${esc(branchName(r.branch_id))}</span><span class="small muted">${esc(r.staff || '')}</span>` +
     `<span class="body">${r.best ? 'الأكثر مبيعاً: ' + esc(r.best) + (r.notes ? '\n' : '') : ''}${esc(r.notes || '')}</span></li>`).join('');
 }
 
-// ---------------------------------------------------------------- admin: all requests
-document.querySelectorAll('[data-af]').forEach(b => b.addEventListener('click', () => {
-  S.adminReqFilter = b.dataset.af; document.querySelectorAll('[data-af]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderAllRequests();
-}));
-function renderAllRequests() {
-  const all = ((S.data && S.data.requests) || []).slice();
-  let list = S.adminReqFilter === 'open' ? all.filter(r => r.status !== 'delivered') : all;
-  if (S.adminReqFilter === 'open') list.sort((a, b) => (b.urgent - a.urgent) || (a.created_at < b.created_at ? 1 : -1));
-  $('allReqList').innerHTML = list.length ? list.map(r => reqRow(r, true)).join('') : '<li class="empty">ما فيه نواقص مفتوحة</li>';
+// ---------------------------------------------------------------- admin: orders & stock
+function statusChips(docs, label) {
+  const m = {}; (docs || []).forEach(x => { m[x.branch_id] = x; });
+  return `<span class="pill ${docs.length === S.branches.length ? 'ok' : 'warn'} num">${docs.length} من ${S.branches.length} ${label}</span>` +
+    S.branches.map(b => m[b.id] ? pill('ok', '✓ ' + shortBranch(b)) : pill('idle', shortBranch(b))).join('');
 }
+// rows: products in catalogue order that appear in any doc (plus deleted ones at the end)
+function sheetRows(docs) {
+  const pm = prodMap(), seen = {};
+  docs.forEach(d => Object.keys(d.items || {}).forEach(k => { seen[k] = true; }));
+  const rows = products().filter(p => seen[p.id]);
+  Object.keys(seen).filter(k => !pm[k]).forEach(k => rows.push({ id: k, name: 'صنف محذوف', unit: '', category: NO_CAT }));
+  return rows;
+}
+function buildSheetTable(docs, opts) {
+  const byBranch = {}; docs.forEach(d => { byBranch[d.branch_id] = d.items || {}; });
+  const cols = opts.split ? S.branches : [];
+  const rows = sheetRows(docs);
+  if (!rows.length) return { html: `<tbody><tr><td class="empty">${opts.empty}</td></tr></tbody>`, csv: [] };
+  const head = ['الصنف', 'الوحدة'].concat(opts.totalFirst ? ['المجموع'] : []).concat(cols.map(shortBranch)).concat(opts.totalFirst ? [] : ['المجموع']);
+  const csv = [head];
+  let html = '<thead><tr>' + head.map((h, i) => `<th${i > 1 ? ' class="num"' : ''}>${esc(h)}</th>`).join('') + '</tr></thead><tbody>';
+  groupByCat(rows).forEach(g => {
+    html += `<tr><td class="cat" colspan="${head.length}">${esc(g.cat)}</td></tr>`;
+    g.items.forEach(p => {
+      let total = 0, any = false;
+      const cells = cols.map(b => { const v = byBranch[b.id] ? byBranch[b.id][p.id] : undefined; if (v != null) { total += Number(v); any = true; } return v; });
+      if (!cols.length) docs.forEach(d => { const v = (d.items || {})[p.id]; if (v != null) { total += Number(v); any = true; } });
+      const cellHTML = v => v == null ? '<td class="num dim">—</td>' : `<td class="num${Number(v) === 0 && opts.zeroRed ? ' zero' : ''}">${money(v)}</td>`;
+      const totalHTML = `<td class="num sum">${any ? money(total) : '—'}</td>`;
+      html += `<tr><td>${esc(p.name)}</td><td class="muted">${esc(p.unit || '')}</td>` +
+        (opts.totalFirst ? totalHTML : '') + cells.map(cellHTML).join('') + (opts.totalFirst ? '' : totalHTML) + '</tr>';
+      const cr = [p.name, p.unit || ''];
+      const cv = cells.map(v => v == null ? '' : Number(v));
+      csv.push(opts.totalFirst ? cr.concat([total], cv) : cr.concat(cv, [any ? total : '']));
+    });
+  });
+  return { html: html + '</tbody>', csv };
+}
+document.querySelectorAll('[data-aov]').forEach(b => b.addEventListener('click', () => {
+  S.aoView = b.dataset.aov; document.querySelectorAll('[data-aov]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderAOrders();
+}));
+let aoCSV = [], asCSV = [];
+function renderAOrders() {
+  const docs = (S.data && S.data.orders) || [];
+  $('ao-date').textContent = dateLabel(S.date);
+  $('ao-status').innerHTML = statusChips(docs, 'أرسلوا');
+  const t = buildSheetTable(docs, { split: S.aoView === 'split', totalFirst: true, empty: 'ما وصلت طلبيات لهذا اليوم' });
+  $('ao-table').innerHTML = t.html; aoCSV = t.csv;
+  const withExtra = S.branches.map(b => docs.find(d => d.branch_id === b.id)).filter(d => d && ((d.extras || []).length || d.notes));
+  $('ao-extra-panel').hidden = !withExtra.length;
+  $('ao-extras').innerHTML = withExtra.map(d => `<li class="req"><span class="item">${esc(branchName(d.branch_id))}</span><span class="small muted">${esc(d.staff || '')}</span>
+      <span class="body">${(d.extras || []).map(x => '• ' + esc(x.name) + (x.qty ? ' — ' + esc(x.qty) : '')).join('\n')}${d.notes ? ((d.extras || []).length ? '\n' : '') + 'ملاحظة: ' + esc(d.notes) : ''}</span></li>`).join('');
+}
+$('ao-csv').addEventListener('click', () => {
+  const docs = (S.data && S.data.orders) || [];
+  if (!docs.length) { toast('ما فيه طلبيات لهذا اليوم'); return; }
+  const full = buildSheetTable(docs, { split: true, totalFirst: true, empty: '' }).csv;
+  const rows = full.slice();
+  const extra = []; docs.forEach(d => (d.extras || []).forEach(x => extra.push([branchName(d.branch_id), x.name, x.qty])));
+  if (extra.length) { rows.push([]); rows.push(['أصناف إضافية: الفرع', 'الصنف', 'الكمية']); extra.forEach(r => rows.push(r)); }
+  downloadCSV('orders-' + S.date, rows);
+});
+function renderAStock() {
+  const docs = (S.data && S.data.stocks) || [];
+  $('as-date').textContent = dateLabel(S.date);
+  $('as-status').innerHTML = statusChips(docs, 'سجّلوا الجرد');
+  const t = buildSheetTable(docs, { split: true, totalFirst: false, zeroRed: true, empty: 'ما فيه جرد مسجل لهذا اليوم' });
+  $('as-table').innerHTML = t.html; asCSV = t.csv;
+}
+$('as-csv').addEventListener('click', () => { if (!asCSV.length) { toast('ما فيه جرد لهذا اليوم'); return; } downloadCSV('stock-' + S.date, asCSV); });
 
 // ---------------------------------------------------------------- admin: period
 document.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => setPreset(b.dataset.p)));
@@ -414,7 +631,7 @@ function renderPeriod() {
   $('p-loss').textContent = money(loss);
   const max = Math.max(1, ...days.map(d => num(d.total)));
   $('dayBars').innerHTML = days.length ? days.map(d =>
-    `<li><span>${esc(dateLabel(d.day, { weekday: 'short', day: 'numeric', month: 'short' }))}</span><span class="track"><i style="width:${(num(d.total) / max * 100).toFixed(1)}%"></i></span><b>${money(d.total)}</b></li>`).join('')
+    `<li><span>${esc(shortDate(d.day))}</span><span class="track"><i style="width:${(num(d.total) / max * 100).toFixed(1)}%"></i></span><b>${money(d.total)}</b></li>`).join('')
     : '<li class="empty">ما فيه تقارير في هذي الفترة</li>';
 }
 $('exportBtn').addEventListener('click', () => {
@@ -423,12 +640,7 @@ $('exportBtn').addEventListener('click', () => {
   S.period.data.branches.forEach(b => rows.push([branchName(b.branch_id), b.days, num(b.cash), num(b.card), num(b.cash) + num(b.card), num(b.expenses), num(b.waste)]));
   rows.push([]); rows.push(['اليوم', 'إجمالي المبيعات', 'عدد التقارير']);
   (S.period.data.days || []).forEach(d => rows.push([d.day, num(d.total), d.reports]));
-  const csv = '﻿' + rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = `مبيعات-المقاصف-${S.period.from}-إلى-${S.period.to}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  downloadCSV(`sales-${S.period.from}-to-${S.period.to}`, rows);
 });
 
 // ---------------------------------------------------------------- admin: settings
@@ -440,12 +652,12 @@ $('boardForm').addEventListener('submit', async e => {
   try { await api('app_set_board', { p_token: tok(), p_text: text }); boardDirty = false; toast(text ? 'انتشر التعميم' : 'انشال التعميم'); load(true); }
   catch (err) { toast(errMsg(err)); }
 });
-async function renderSettings() {
+async function renderPins() {
   if (!boardDirty) $('b-text').value = (S.data && S.data.board && S.data.board.body) || '';
   try { await loadStatus(); } catch (e) {}
   $('pinList').innerHTML = S.branches.map(b => `<li>
       <span>${esc(b.name)}</span>
-      <span class="pill ${b.ready ? 'ok' : 'bad'}">${b.ready ? 'له رقم سري' : 'بدون رقم'}</span>
+      ${pill(b.ready ? 'ok' : 'bad', b.ready ? 'له رقم سري' : 'بدون رقم')}
       <form data-pin="${esc(b.id)}" novalidate>
         <input type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" placeholder="رقم جديد (4–8 أرقام)" aria-label="رقم سري جديد لـ ${esc(b.name)}">
         <button class="btn ghost" type="submit">تعيين</button>
@@ -455,7 +667,78 @@ $('pinList').addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target, id = f.dataset.pin, input = f.querySelector('input'), pin = digits(input.value);
   if (!/^[0-9]{4,8}$/.test(pin)) { toast(MSG.BAD_PIN_FORMAT); return; }
-  try { await api('app_set_branch_pin', { p_token: tok(), p_branch: id, p_pin: pin }); input.value = ''; toast('تم تعيين الرقم السري لـ ' + branchName(id)); renderSettings(); }
+  try { await api('app_set_branch_pin', { p_token: tok(), p_branch: id, p_pin: pin }); input.value = ''; toast('تم تعيين الرقم السري لـ ' + branchName(id)); renderPins(); }
+  catch (err) { toast(errMsg(err)); }
+});
+
+// products
+let editingProd = null;
+function renderProducts() {
+  if (editingProd) return;
+  const q = norm($('prod-q').value);
+  const active = products().filter(p => p.active !== false);
+  $('prod-count').textContent = active.length + ' صنف';
+  const list = active.filter(p => !q || norm(p.name + ' ' + (p.category || '')).includes(q));
+  $('prodList').innerHTML = list.length ? list.map(p => `<li data-prod="${esc(p.id)}">
+      <div class="pinfo"><span>${esc(p.name)}</span><small>${esc([p.unit, p.category || NO_CAT, KIND_LABEL[p.kind] || ''].filter(Boolean).join(' · '))}</small></div>
+      <div class="pbtns"><button type="button" data-pedit>تعديل</button><button type="button" class="danger" data-pdel>حذف</button></div></li>`).join('')
+    : `<li class="empty">${active.length ? 'ما فيه صنف بهذا الاسم' : 'ما فيه أصناف بعد. أضفها من الخانة اللي فوق.'}</li>`;
+}
+$('prod-q').addEventListener('input', renderProducts);
+function parseBulk(text, kind) {
+  return text.split(/\r?\n/).map(line => {
+    const parts = (line.includes('\t') ? line.split('\t') : line.split(/[،,|]/)).map(s => s.trim());
+    return { name: parts[0] || '', unit: parts[1] || '', category: parts[2] || '', kind };
+  }).filter(x => x.name);
+}
+$('bulkForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const items = parseBulk($('bulk').value, $('bulk-kind').value);
+  if (!items.length) { toast('اكتب صنف واحد على الأقل'); return; }
+  if (items.length > 500) { toast('أكثر شي 500 صنف في المرة'); return; }
+  $('bulk-btn').disabled = true;
+  try {
+    const r = await api('app_products_add', { p_token: tok(), p_items: items });
+    $('bulk').value = '';
+    toast(`انضاف ${r.added} صنف` + (r.skipped ? `، و${r.skipped} موجودة من قبل` : ''));
+    await load(true); renderProducts();
+  } catch (err) { toast(errMsg(err)); }
+  finally { $('bulk-btn').disabled = false; }
+});
+$('prodList').addEventListener('click', async e => {
+  const li = e.target.closest('li[data-prod]'); if (!li) return;
+  const id = li.dataset.prod, p = products().find(x => x.id === id); if (!p) return;
+  if (e.target.closest('[data-pdel]')) {
+    const b = e.target.closest('[data-pdel]');
+    if (!b.classList.contains('confirm')) {
+      b.classList.add('confirm'); b.textContent = 'تأكيد الحذف';
+      setTimeout(() => { if (b.isConnected) { b.classList.remove('confirm'); b.textContent = 'حذف'; } }, 4000);
+      return;
+    }
+    try { await api('app_product_delete', { p_token: tok(), p_id: id }); toast('انحذف ' + p.name); await load(true); renderProducts(); }
+    catch (err) { toast(errMsg(err)); }
+    return;
+  }
+  if (e.target.closest('[data-pedit]')) {
+    editingProd = id;
+    li.innerHTML = `<form data-pform novalidate>
+        <input name="name" aria-label="اسم الصنف" value="${esc(p.name)}">
+        <input name="unit" aria-label="الوحدة" placeholder="الوحدة" value="${esc(p.unit || '')}">
+        <input name="category" aria-label="القسم" placeholder="القسم" value="${esc(p.category || '')}">
+        <select name="kind" aria-label="يظهر في">${Object.keys(KIND_LABEL).map(k => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${KIND_LABEL[k]}</option>`).join('')}</select>
+        <div class="actions"><button class="btn small-btn" type="submit">حفظ</button><button class="btn ghost small-btn" type="button" data-pcancel>إلغاء</button></div>
+      </form>`;
+    li.querySelector('input').focus();
+  }
+  if (e.target.closest('[data-pcancel]')) { editingProd = null; renderProducts(); }
+});
+$('prodList').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, id = f.closest('li').dataset.prod;
+  const val = n => f.elements[n].value.trim(); // f.name is the form's own name, so read fields through elements
+  const body = { name: val('name'), unit: val('unit'), category: val('category'), kind: val('kind') };
+  if (!body.name) { toast('اكتب اسم الصنف'); return; }
+  try { await api('app_product_update', { p_token: tok(), p_id: id, p: body }); editingProd = null; toast('انحفظ التعديل'); await load(true); renderProducts(); }
   catch (err) { toast(errMsg(err)); }
 });
 
