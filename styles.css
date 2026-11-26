@@ -207,3 +207,45 @@ tbody tr:last-child td{border-bottom:0}
   table{min-width:0;font-size:11pt}
   th,td{border-bottom:1px solid #999}
 }
+
+/* free rows: shortages & stock */
+.rows-head{display:grid;grid-template-columns:1fr 6.5em 88px;gap:6px;font-size:.78rem;color:var(--muted);font-weight:600;padding-inline:2px}
+.order-rows-head{grid-template-columns:1fr 6.5em 88px}
+.rows{display:grid;gap:8px}
+.frow{display:grid;grid-template-columns:1fr 6.5em auto;gap:6px;align-items:center}
+.frow .fbtns{display:flex;gap:4px;width:88px;justify-content:flex-end}
+.frow input{height:44px}
+.frow .qty{text-align:center;font-variant-numeric:tabular-nums}
+.icon-btn{appearance:none;width:42px;height:44px;flex:0 0 42px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon-btn svg{width:20px;height:20px}
+.icon-btn.del{font-size:1.2rem}
+.icon-btn.busy{opacity:.5}
+.thumb{appearance:none;width:42px;height:44px;flex:0 0 42px;border-radius:8px;border:2px solid var(--accent);padding:0;overflow:hidden;cursor:pointer;background:var(--sunk)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.add-row{width:100%}
+@media (max-width:380px){.frow,.rows-head{grid-template-columns:1fr 5em auto}}
+
+/* admin lists */
+.agg-name{display:flex;align-items:center;gap:8px}
+.agg-name .thumbs{display:flex;gap:4px}
+.mini{width:34px;height:34px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid var(--line);display:block}
+.mini-btn{appearance:none;border:0;padding:0;background:none;cursor:pointer}
+.agg-detail{font-size:.8rem;color:var(--muted);white-space:normal}
+.branch-card{display:grid;gap:6px;padding:12px 0;border-bottom:1px solid var(--line)}
+.branch-card:last-child{border-bottom:0}
+.branch-card h3{display:flex;justify-content:space-between;gap:8px}
+.branch-card ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.branch-card li{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.branch-card li .q{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.branch-card .note{font-size:.85rem;color:var(--muted);white-space:pre-wrap}
+td.wrap{white-space:normal}
+
+/* lightbox */
+.lightbox{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.85);display:grid;grid-template-rows:1fr auto;gap:12px;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain;place-self:center;border-radius:8px}
+.lb-actions{display:flex;gap:8px;justify-content:center}
+@media print{.lightbox,.icon-btn{display:none!important}.mini{width:60px;height:60px}}
+.panel > *{min-width:0}
+#ao-body table,#as-body table{min-width:0}
+#ao-body td,#as-body td{white-space:normal}
+#ao-body td.sum,#as-body td.sum{white-space:nowrap}
