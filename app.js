@@ -3,6 +3,18 @@
 'use strict';
 
 const CFG = window.APP_CONFIG || {};
+const APP_VERSION = '4'; // bump together with version.json and the ?v= in index.html
+
+// load the newest site after an update (browsers and home-screen apps keep old copies)
+function checkVersion() {
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || j.v === APP_VERSION) return;
+    let tried = null; try { tried = sessionStorage.getItem('reloadedFor'); } catch (e) {}
+    if (tried === j.v || (typeof anyDirty === 'function' && tok() && anyDirty())) return;
+    try { sessionStorage.setItem('reloadedFor', j.v); } catch (e) {}
+    location.reload();
+  }).catch(() => {});
+}
 
 // ---------------------------------------------------------------- constants
 const TASKS = [
@@ -686,6 +698,8 @@ $('pinList').addEventListener('submit', async e => {
 });
 
 // ---------------------------------------------------------------- boot
+checkVersion();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
 if (!CFG.SUPABASE_URL || !CFG.SUPABASE_KEY) show('setup');
 else if (S.sess && S.sess.token) { show('app'); loadStatus().catch(() => {}).finally(startApp); }
 else showLogin();
